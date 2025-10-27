@@ -1,0 +1,17 @@
+# Ignore large files
+*.img
+*.tar.gz
+*.backup
+
+# Ignore Mac-specific files
+.DS_Store
+._*
+
+# Ignore temporary files
+*.log
+*.tmp
+/tmp/
+
+# Ignore any directories with images
+**/images/
+**/optimized/
