@@ -255,12 +255,15 @@ const FullscreenImage = styled.img`
   
   /* Landscape orientation */
   @media (max-width: 768px) and (orientation: landscape) {
-    /* Full screen in landscape with border */
+    /* Full screen in landscape with border - optimized for wider display */
     max-width: min(98vw, calc(100vw - 8px));
     max-width: min(98dvw, calc(100dvw - 8px));
-    max-height: min(95vh, calc(100vh - 8px));
-    max-height: min(95dvh, calc(100dvh - 8px));
+    /* Increased height to prevent top/bottom clipping on iPhone 14 */
+    max-height: min(98vh, calc(100vh - 8px));
+    max-height: min(98dvh, calc(100dvh - 8px));
     object-fit: contain;
+    /* Optimize for landscape viewing */
+    width: 100%;
   }
   
   /* Portrait orientation */
