@@ -118,6 +118,7 @@ echo "🔄 Checking for missing folders and creating them..."
 
 # Process each portfolio folder
 sync_success=true
+synced_folders=()  # Track which folders were actually synced
 for folder_path in "${portfolio_folders[@]}"; do
     # Get the relative path from the base directory
     relative_path="${folder_path#$LOCAL_PATH/}"
@@ -189,6 +190,8 @@ for folder_path in "${portfolio_folders[@]}"; do
             -e "ssh -i $SSH_KEY" \
             "$folder_path/" "$PI_USER@$PI_HOST:$PI_PATH/$pi5_folder/"; then
             echo "   ✅ Successfully synced: $relative_path"
+            # Track this folder for optimization
+            synced_folders+=("$pi5_folder")
             
             # Ensure Cover.jpg exists in the folder
             echo "   🖼️  Ensuring Cover.jpg exists..."
@@ -238,17 +241,86 @@ if [ "$sync_success" = true ]; then
     else
         echo "✅ Images synced successfully!"
         
-        # Optimize images on Pi5
+        # Optimize images on Pi5 - only recently synced folders
         echo "🔧 Optimizing images on Pi5..."
-        echo "📊 Creating web-optimized versions for portfolio..."
         
-        # Run the photo portfolio optimization script
-        ssh -i "$SSH_KEY" "$PI_USER@$PI_HOST" "cd /home/ian/photo-portfolio && bash scripts/optimize-images.sh" 2>&1 | \
-        grep -E "(Found|Images optimized|Images skipped|Optimization Complete)" || true
+        if [ ${#synced_folders[@]} -gt 0 ]; then
+            echo "📊 Creating web-optimized versions for recently synced folders only..."
+            echo "📁 Folders to optimize: ${synced_folders[*]}"
+            
+            # Build SSH command with folder parameters
+            # Escape folder names properly for SSH
+optimize_folders_args=""
+            for folder in "${synced_folders[@]}"; do
+                # Escape single quotes in folder names and wrap in quotes
+                escaped_folder=$(echo "$folder" | sed "s/'/'\\\\''/g")
+                optimize_folders_args="$optimize_folders_args '$escaped_folder'"
+            done
+            
+            # Run optimization for only the synced folders
+            ssh -i "$SSH_KEY" "$PI_USER@$PI_HOST" "cd /home/ian/photo-portfolio && bash scripts/optimize-images.sh$optimize_folders_args" 2>&1 | \
+            grep -E "(Optimizing only|Processing folder|Found|Images optimized|Images skipped|Optimization Summary|Optimization Complete)" || true
+        else
+            echo "⚠️  No folders were synced, skipping optimization"
+        fi
         
-        # Restart the photo portfolio service to refresh the cache
-        echo "🔄 Restarting photo portfolio service..."
-        ssh -i "$SSH_KEY" "$PI_USER@$PI_HOST" "sudo systemctl restart photo-portfolio.service && sleep 3"
+        # ALWAYS perform a full restart to ensure new folders/images are detected
+        echo "🔄 Performing FULL photo portfolio server restart..."
+        echo "   (This ensures all new folders and images are properly loaded and visible)"
+        
+        # Comprehensive restart: kill all related processes
+        echo "   📴 Stopping server completely..."
+        ssh -i "$SSH_KEY" "$PI_USER@$PI_HOST" "sudo pkill -f 'node server.js'" 2>/dev/null || true
+        ssh -i "$SSH_KEY" "$PI_USER@$PI_HOST" "sudo pkill -f 'node.*photo-portfolio'" 2>/dev/null || true
+        sleep 4
+        
+        # Force kill if still running
+        ssh -i "$SSH_KEY" "$PI_USER@$PI_HOST" "pgrep -f 'node server.js' > /dev/null && sudo pkill -9 -f 'node server.js'" 2>/dev/null || true
+        sleep 2
+        
+        # Verify it's fully stopped
+        if ssh -i "$SSH_KEY" "$PI_USER@$PI_HOST" "pgrep -f 'node server.js' > /dev/null 2>&1"; then
+            echo "   ⚠️  Warning: Server process still running, forcing kill..."
+            ssh -i "$SSH_KEY" "$PI_USER@$PI_HOST" "sudo pkill -9 -f 'node server.js'"
+            sleep 2
+        else
+            echo "   ✅ Server fully stopped"
+        fi
+        
+        # Start the server completely fresh
+        echo "   🚀 Starting server fresh with all new configurations..."
+        ssh -i "$SSH_KEY" "$PI_USER@$PI_HOST" "cd /home/ian/photo-portfolio && sudo NODE_ENV=production nohup node server.js > server.log 2>&1 &"
+        
+        # Wait for server to fully start
+        echo "   ⏳ Waiting for server to start and initialize..."
+        sleep 6
+        
+        # Verify server is running and responding
+        MAX_ATTEMPTS=15
+        ATTEMPT=1
+        SERVER_RUNNING=false
+        
+        while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            if ssh -i "$SSH_KEY" "$PI_USER@$PI_HOST" "pgrep -f 'node server.js' > /dev/null"; then
+                # Check if server is responding
+                if ssh -i "$SSH_KEY" "$PI_USER@$PI_HOST" "curl -s http://localhost:3000/api/categories > /dev/null 2>&1"; then
+                    SERVER_RUNNING=true
+                    echo "   ✅ Server is running and responding (attempt $ATTEMPT/$MAX_ATTEMPTS)"
+                    break
+                else
+                    echo "   ⏳ Server process running but not responding yet (attempt $ATTEMPT/$MAX_ATTEMPTS)..."
+                fi
+            else
+                echo "   ⏳ Waiting for server process to start (attempt $ATTEMPT/$MAX_ATTEMPTS)..."
+            fi
+            sleep 2
+            ((ATTEMPT++))
+        done
+        
+        if [ "$SERVER_RUNNING" = false ]; then
+            echo "   ❌ Server failed to start or respond - check logs:"
+            echo "   ssh $PI_USER@$PI_HOST 'tail -30 /home/ian/photo-portfolio/server.log'"
+        fi
         
         # Verify the website is responding
         echo "🌐 Testing website..."

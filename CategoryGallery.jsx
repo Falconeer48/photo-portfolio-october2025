@@ -196,17 +196,23 @@ const FullscreenOverlay = styled.div`
     right: 0;
     bottom: 0;
     
-    /* Touch-friendly */
-    touch-action: pan-x pinch-zoom;
+    /* Touch-friendly - fully managed by JS to avoid accidental scroll/back swipe */
+    touch-action: none;
   }
   
   /* Landscape orientation fixes */
   @media (max-width: 768px) and (orientation: landscape) {
-    /* Full screen in landscape */
-    height: 100vh;
-    height: 100dvh;
+    /* Full screen in landscape - use ALL available space */
+    height: 100vh !important;
+    height: 100dvh !important;
     width: 100vw;
     width: 100dvw;
+    /* Center the image vertically and horizontally */
+    align-items: center;
+    justify-content: center;
+    /* No padding - use full viewport */
+    padding: 0;
+    box-sizing: border-box;
   }
   
   /* True fullscreen mode - completely clean */
@@ -255,17 +261,17 @@ const FullscreenImage = styled.img`
   
   /* Landscape orientation */
   @media (max-width: 768px) and (orientation: landscape) {
-    /* Full screen in landscape - prioritize height to prevent clipping */
+    /* Use full viewport in landscape - controls hidden, so maximize space */
     max-height: 100vh !important;
     max-height: 100dvh !important;
-    /* Let width adjust based on image aspect ratio */
     max-width: 100vw !important;
     max-width: 100dvw !important;
     width: auto;
     height: auto;
     object-fit: contain;
-    /* Center the image vertically */
-    margin: auto;
+    /* Center the image */
+    margin: 0;
+    border: 2px solid white;
   }
   
   /* Portrait orientation */
@@ -321,6 +327,11 @@ const FullscreenControls = styled.div`
     padding: 2px;
     gap: 0.1rem;
     max-width: 98vw;
+  }
+  
+  /* Hide controls in landscape on mobile to maximize image space */
+  @media (max-width: 768px) and (orientation: landscape) {
+    display: none !important;
   }
   
   @keyframes fadeInOut {
@@ -768,6 +779,19 @@ function getOptimalImageSrc(originalSrc, isFullscreen = false) {
     optimizedSrc = originalSrc.replace('/images/portfolio/', `/images/optimized/${optimalSize}/`);
   }
   
+  // URL-encode the path to handle spaces and special characters in folder/file names
+  // Split the path into parts and encode each component
+  const urlParts = optimizedSrc.split('/');
+  const encodedParts = urlParts.map(part => {
+    if (part === 'images' || part === 'optimized' || optimalSize === 'full' || ['thumbnails', 'previews', 'large', 'mobile', 'full'].includes(part)) {
+      // Don't encode the route segments
+      return part;
+    }
+    // Encode the actual folder/file names
+    return encodeURIComponent(part);
+  });
+  optimizedSrc = encodedParts.join('/');
+  
   // Debug logging for mobile devices
   if (isMobile) {
     console.log(`📱 Mobile device detected: ${screenWidth}x${screenHeight}, pixelRatio: ${pixelRatio}`);
@@ -802,12 +826,24 @@ function GalleryImage({ image, onClick, index }) {
             src={getOptimalImageSrc(image.src)}
             alt={image.alt}
             onLoad={() => setLoading(false)}
-            onError={() => {
-              console.error('Failed to load optimized image, trying original:', image.src)
-              // Fallback to original image if optimized version fails
-              const img = document.querySelector(`img[alt="${image.alt}"]`);
-              if (img) {
+            onError={(e) => {
+              console.error('Failed to load optimized image, trying fallbacks:', image.src)
+              const img = e.target;
+              const currentSrc = img.src;
+              
+              // Try fallback order: large -> previews -> original
+              if (currentSrc.includes('/optimized/full/')) {
+                // Try large if full fails
+                img.src = currentSrc.replace('/optimized/full/', '/optimized/large/');
+              } else if (currentSrc.includes('/optimized/large/')) {
+                // Try previews if large fails
+                img.src = currentSrc.replace('/optimized/large/', '/optimized/previews/');
+              } else if (currentSrc.includes('/optimized/previews/')) {
+                // Fallback to original if all optimized versions fail
                 img.src = image.src;
+              } else {
+                // Already at original, give up
+                setError(true);
               }
             }}
           />
@@ -840,6 +876,8 @@ function CategoryGallery({ category, subcategories = [], onBack, onSubcategoryCl
   const [showBackToTop, setShowBackToTop] = useState(false)
   const [touchStart, setTouchStart] = useState(null)
   const [touchEnd, setTouchEnd] = useState(null)
+  const [touchStartPos, setTouchStartPos] = useState(null)
+  const [touchCurrentPos, setTouchCurrentPos] = useState(null)
   const [pinchStart, setPinchStart] = useState(null)
   const [screenSize, setScreenSize] = useState({ width: 0, height: 0 })
   
@@ -907,6 +945,8 @@ function CategoryGallery({ category, subcategories = [], onBack, onSubcategoryCl
     // Handle single touch for swipe gestures
     setTouchEnd(null)
     setTouchStart(e.targetTouches[0].clientX)
+    setTouchStartPos({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY })
+    setTouchCurrentPos({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY })
     console.log('📱 Touch start:', e.targetTouches[0].clientX)
   }
 
@@ -933,6 +973,11 @@ function CategoryGallery({ category, subcategories = [], onBack, onSubcategoryCl
 
     // Handle single touch for swipe gestures
     setTouchEnd(e.targetTouches[0].clientX)
+    setTouchCurrentPos({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY })
+    // Prevent the page from scrolling while swiping horizontally
+    if (e.cancelable) {
+      e.preventDefault()
+    }
   }
 
   const handleTouchEnd = () => {
@@ -940,13 +985,20 @@ function CategoryGallery({ category, subcategories = [], onBack, onSubcategoryCl
     setPinchStart(null);
 
     // Handle swipe gestures
-    if (!touchStart || !touchEnd) return
+    if (!touchStartPos || !touchCurrentPos) return
     
-    const distance = touchStart - touchEnd
-    const isLeftSwipe = distance > 30  // Reduced threshold for easier swiping
-    const isRightSwipe = distance < -30
+    const deltaX = touchStartPos.x - touchCurrentPos.x
+    const deltaY = touchStartPos.y - touchCurrentPos.y
+    const absX = Math.abs(deltaX)
+    const absY = Math.abs(deltaY)
+    
+    // Require dominant horizontal movement to avoid accidental triggers while scrolling
+    const horizontalDominant = absX > absY * 1.5
+    const threshold = 30
+    const isLeftSwipe = horizontalDominant && deltaX > threshold
+    const isRightSwipe = horizontalDominant && deltaX < -threshold
 
-    console.log('📱 Touch end - distance:', distance, 'left:', isLeftSwipe, 'right:', isRightSwipe)
+    console.log('📱 Touch end - deltaX/deltaY:', deltaX, deltaY, 'left:', isLeftSwipe, 'right:', isRightSwipe)
 
     if (isLeftSwipe) {
       console.log('👈 Swipe left - next image')
@@ -960,6 +1012,8 @@ function CategoryGallery({ category, subcategories = [], onBack, onSubcategoryCl
     // Reset touch states
     setTouchStart(null)
     setTouchEnd(null)
+    setTouchStartPos(null)
+    setTouchCurrentPos(null)
   }
 
   const fetchImages = async () => {
@@ -1606,7 +1660,7 @@ function CategoryGallery({ category, subcategories = [], onBack, onSubcategoryCl
             // Ensure touch events work properly on iOS
             WebkitTouchCallout: 'none',
             WebkitUserSelect: 'none',
-            touchAction: 'pan-x pinch-zoom'
+            touchAction: 'none'
           }}
         >
 
@@ -1627,6 +1681,24 @@ function CategoryGallery({ category, subcategories = [], onBack, onSubcategoryCl
           <FullscreenImage 
             src={getOptimalImageSrc(selectedImage.src, true)} 
             alt={selectedImage.alt}
+            onError={(e) => {
+              console.error('Failed to load fullscreen image, trying fallbacks:', selectedImage.src)
+              const img = e.target;
+              const currentSrc = img.src;
+              
+              // Try fallback order: large -> previews -> original
+              if (currentSrc.includes('/optimized/full/')) {
+                // Try large if full fails
+                img.src = currentSrc.replace('/optimized/full/', '/optimized/large/');
+              } else if (currentSrc.includes('/optimized/large/')) {
+                // Try previews if large fails
+                img.src = currentSrc.replace('/optimized/large/', '/optimized/previews/');
+              } else if (currentSrc.includes('/optimized/previews/')) {
+                // Fallback to original if all optimized versions fail
+                img.src = selectedImage.src;
+              }
+              // If still fails, user will see broken image but at least we tried
+            }}
             onClick={(e) => {
               e.stopPropagation();
               setIsZoomed(!isZoomed);

@@ -1,0 +1,152 @@
+{
+  "assistant": {
+    "default_model": {
+      "provider": "ollama",
+      "model": "codellama:13b"
+    },
+    "provider": {
+      "ollama": {
+        "api_url": "http://localhost:11434"
+      }
+    }
+  },
+  "language_models": {
+    "ollama": {
+      "api_url": "http://localhost:11434",
+      "models": {
+        "codellama:13b": {
+          "display_name": "CodeLlama 13B (Local)",
+          "max_tokens": 4096,
+          "context_window": 16384
+        },
+        "llama3.1:8b": {
+          "display_name": "Llama 3.1 8B (Local)",
+          "max_tokens": 4096,
+          "context_window": 32768
+        },
+        "llama3.2:3b": {
+          "display_name": "Llama 3.2 3B (Local)",
+          "max_tokens": 2048,
+          "context_window": 8192
+        }
+      }
+    }
+  },
+  "features": {
+    "inline_completion_provider": "ollama",
+    "copilot": false
+  },
+  "vim_mode": false,
+  "ui_font_size": 16,
+  "buffer_font_size": 14,
+  "theme": {
+    "mode": "system",
+    "light": "One Light",
+    "dark": "One Dark"
+  },
+  "show_whitespaces": "selection",
+  "tab_size": 2,
+  "hard_tabs": false,
+  "soft_wrap": "editor_width",
+  "preferred_line_length": 100,
+  "format_on_save": "on",
+  "remove_trailing_whitespace_on_save": true,
+  "ensure_final_newline_on_save": true,
+  "show_inline_completions": true,
+  "auto_update": true,
+  "terminal": {
+    "shell": {
+      "program": "/bin/zsh"
+    },
+    "font_size": 14,
+    "working_directory": "current_project_directory"
+  },
+  "project_panel": {
+    "dock": "left",
+    "default_width": 240
+  },
+  "outline_panel": {
+    "dock": "right",
+    "default_width": 200
+  },
+  "collaboration_panel": {
+    "dock": "left"
+  },
+  "chat_panel": {
+    "dock": "right",
+    "default_width": 400
+  },
+  "notification_panel": {
+    "dock": "right"
+  },
+  "lsp": {
+    "typescript-language-server": {
+      "initialization_options": {
+        "preferences": {
+          "includeInlayParameterNameHints": "all",
+          "includeInlayParameterNameHintsWhenArgumentMatchesName": true,
+          "includeInlayFunctionParameterTypeHints": true,
+          "includeInlayVariableTypeHints": true,
+          "includeInlayPropertyDeclarationTypeHints": true,
+          "includeInlayFunctionLikeReturnTypeHints": true
+        }
+      }
+    }
+  },
+  "languages": {
+    "JavaScript": {
+      "tab_size": 2,
+      "format_on_save": "on"
+    },
+    "TypeScript": {
+      "tab_size": 2,
+      "format_on_save": "on"
+    },
+    "JSON": {
+      "tab_size": 2,
+      "format_on_save": "on"
+    },
+    "Python": {
+      "tab_size": 4,
+      "format_on_save": "on"
+    },
+    "Rust": {
+      "tab_size": 4,
+      "format_on_save": "on"
+    },
+    "Go": {
+      "tab_size": 4,
+      "format_on_save": "on"
+    },
+    "Shell Script": {
+      "tab_size": 2,
+      "format_on_save": "on"
+    }
+  },
+  "file_types": {
+    "Dockerfile": ["Dockerfile", "*.dockerfile"],
+    "JSON": ["*.json", "*.jsonc"],
+    "Shell Script": ["*.sh", "*.bash", "*.zsh"]
+  },
+  "git": {
+    "inline_blame": {
+      "enabled": true
+    }
+  },
+  "preview_tabs": {
+    "enabled": true
+  },
+  "scrollbar": {
+    "show": "auto",
+    "git_diff": true,
+    "search_results": true,
+    "selected_symbol": true,
+    "diagnostics": true
+  },
+  "inlay_hints": {
+    "enabled": true,
+    "show_type_hints": true,
+    "show_parameter_hints": true,
+    "show_other_hints": true
+  }
+}

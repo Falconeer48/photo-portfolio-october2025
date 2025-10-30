@@ -1,0 +1,143 @@
+#!/bin/bash
+set -euo pipefail
+# Cursor DNS Fix (safe)
+# - Backs up /etc/hosts
+# - Removes any existing api.cursor.sh pins
+# - Pins api.cursor.sh to current A records for api.cursor.com (up to 2)
+# - Flushes macOS DNS caches
+# - Provides --restore to undo the most recent change
+
+need_sudo() {
+  if [[ $EUID -ne 0 ]]; then
+    echo "This script needs sudo. Re-running with sudo..."
+    exec sudo "$0" "$@"
+  fi
+}
+
+backup_hosts() {
+  BACKUP="/etc/hosts.backup-cursor-$(date +%Y%m%d-%H%M%S)"
+  cp /etc/hosts "$BACKUP"
+  echo "$BACKUP"
+}
+
+restore_latest_backup() {
+  local last
+  last=$(ls -1t /etc/hosts.backup-cursor-* 2>/dev/null | head -n1 || true)
+  if [[ -z "${last}" ]]; then
+    echo "No /etc/hosts.backup-cursor-* files found."
+    exit 1
+  fi
+  echo "Restoring: $last"
+  cp "$last" /etc/hosts
+  flush_dns
+  echo "Restored. Current api.cursor.sh resolution:"
+  dig +short api.cursor.sh || true
+}
+
+flush_dns() {
+  dscacheutil -flushcache || true
+  killall -HUP mDNSResponder || true
+}
+
+resolve_ips() {
+  if command -v dig >/dev/null 2>&1; then
+    dig +short A api.cursor.com | head -n 2 | awk 'NF'
+  else
+    nslookup api.cursor.com 2>/dev/null | awk '/^Address: /{print $2}' | grep -E '^[0-9]+\.' | tail -n 2
+  fi
+}
+
+remove_existing_pins() {
+  if grep -qE '(^|[[:space:]])api\.cursor\.sh([[:space:]]|$)' /etc/hosts; then
+    echo "Removing existing api.cursor.sh entries from /etc/hosts..."
+    sed -i '' '/api\.cursor\.sh/d' /etc/hosts
+  fi
+}
+
+write_pins() {
+  local ips="$1"
+  {
+    echo "# Cursor temporary pin $(date +%Y-%m-%dT%H:%M:%S)"
+    while read -r ip; do
+      [[ -n "$ip" ]] && echo "$ip api.cursor.sh"
+    done <<< "$ips"
+  } >> /etc/hosts
+}
+
+test_resolution() {
+  if dig +short api.cursor.sh | grep -qE '^[0-9]+\.'; then
+    echo "✓ api.cursor.sh resolves to: $(dig +short api.cursor.sh | paste -sd ',' -)"
+    return 0
+  fi
+  echo "✗ api.cursor.sh does not resolve"
+  return 1
+}
+
+test_https() {
+  if curl -sS --connect-timeout 5 --max-time 10 https://api.cursor.sh >/dev/null; then
+    echo "✓ HTTPS to https://api.cursor.sh succeeded"
+  else
+    echo "⚠ Name resolves but HTTPS check failed. The pinned IP may be unhealthy or blocked."
+  fi
+}
+
+main() {
+  case "${1:-}" in
+    --restore)
+      need_sudo
+      restore_latest_backup
+      exit 0
+      ;;
+  esac
+
+  echo "=========================================="
+  echo "Cursor DNS Fix (safe)"
+  echo "=========================================="
+  echo
+
+  need_sudo
+
+  BACKUP_PATH=$(backup_hosts)
+  echo "Backed up /etc/hosts to: $BACKUP_PATH"
+
+  remove_existing_pins
+
+  echo
+  echo "Resolving api.cursor.com..."
+  IPS="$(resolve_ips || true)"
+  if [[ -z "$IPS" ]]; then
+    echo "Could not resolve api.cursor.com to IPv4. No changes made."
+    echo "Try again later or check your resolver."
+    exit 1
+  fi
+
+  echo "Will pin api.cursor.sh to:"
+  echo "$IPS" | sed 's/^/  - /'
+
+  echo
+  echo "Updating /etc/hosts..."
+  write_pins "$IPS"
+
+  echo
+  echo "Flushing DNS caches..."
+  flush_dns
+
+  echo
+  echo "Testing resolution..."
+  if ! test_resolution; then
+    echo "Rolling back /etc/hosts..."
+    cp "$BACKUP_PATH" /etc/hosts
+    flush_dns
+    exit 1
+  fi
+
+  echo
+  echo "Testing HTTPS connectivity..."
+  test_https
+
+  echo
+  echo "Done."
+  echo "Tip: To undo, run: sudo $(basename "$0") --restore"
+}
+
+main "$@"

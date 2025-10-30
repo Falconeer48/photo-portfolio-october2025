@@ -1,0 +1,122 @@
+{
+  "assistant": {
+    "default_model": {
+      "provider": "ollama",
+      "model": "codellama:13b"
+    },
+    "version": "2"
+  },
+  "language_models": {
+    "ollama": {
+      "api_url": "http://localhost:11434",
+      "low_speed_timeout_seconds": 30
+    }
+  },
+  "node": {
+    "path": "/usr/local/bin/node",
+    "npm_path": "/usr/local/bin/npm"
+  },
+  "features": {
+    "copilot": false
+  },
+  "vim_mode": false,
+  "ui_font_size": 16,
+  "buffer_font_size": 14,
+  "theme": {
+    "mode": "system",
+    "light": "One Light",
+    "dark": "One Dark"
+  },
+  "show_whitespaces": "selection",
+  "tab_size": 2,
+  "hard_tabs": false,
+  "soft_wrap": "editor_width",
+  "preferred_line_length": 100,
+  "format_on_save": "on",
+  "remove_trailing_whitespace_on_save": true,
+  "ensure_final_newline_on_save": true,
+  "show_inline_completions": true,
+  "auto_update": true,
+  "terminal": {
+    "shell": {
+      "program": "/bin/zsh"
+    },
+    "font_size": 14,
+    "working_directory": "current_project_directory"
+  },
+  "project_panel": {
+    "dock": "left",
+    "default_width": 240
+  },
+  "chat_panel": {
+    "dock": "right",
+    "default_width": 400
+  },
+  "lsp": {
+    "typescript-language-server": {
+      "initialization_options": {
+        "preferences": {
+          "includeInlayParameterNameHints": "all",
+          "includeInlayParameterNameHintsWhenArgumentMatchesName": true,
+          "includeInlayFunctionParameterTypeHints": true,
+          "includeInlayVariableTypeHints": true,
+          "includeInlayPropertyDeclarationTypeHints": true,
+          "includeInlayFunctionLikeReturnTypeHints": true
+        }
+      }
+    }
+  },
+  "languages": {
+    "JavaScript": {
+      "tab_size": 2,
+      "format_on_save": "on"
+    },
+    "TypeScript": {
+      "tab_size": 2,
+      "format_on_save": "on"
+    },
+    "JSON": {
+      "tab_size": 2,
+      "format_on_save": "on"
+    },
+    "Python": {
+      "tab_size": 4,
+      "format_on_save": "on"
+    },
+    "Rust": {
+      "tab_size": 4,
+      "format_on_save": "on"
+    },
+    "Go": {
+      "tab_size": 4,
+      "format_on_save": "on"
+    },
+    "Shell Script": {
+      "tab_size": 2,
+      "format_on_save": "on"
+    }
+  },
+  "file_types": {
+    "Dockerfile": ["Dockerfile", "*.dockerfile"],
+    "JSON": ["*.json", "*.jsonc"],
+    "Shell Script": ["*.sh", "*.bash", "*.zsh"]
+  },
+  "git": {
+    "inline_blame": {
+      "enabled": true
+    }
+  },
+  "scrollbar": {
+    "show": "auto",
+    "git_diff": true,
+    "search_results": true,
+    "selected_symbol": true,
+    "diagnostics": true
+  },
+  "inlay_hints": {
+    "enabled": true,
+    "show_type_hints": true,
+    "show_parameter_hints": true,
+    "show_other_hints": true
+  }
+}

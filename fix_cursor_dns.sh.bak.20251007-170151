@@ -1,0 +1,82 @@
+#!/bin/bash
+set -euo pipefail
+
+echo "=========================================="
+echo "Cursor DNS Fix (safe)"
+echo "=========================================="
+echo
+
+# Require sudo up front
+if [[ $EUID -ne 0 ]]; then
+  echo "This script needs sudo. Re-running with sudo..."
+  exec sudo "$0" "$@"
+fi
+
+# Backup hosts
+BACKUP="/etc/hosts.backup-$(date +%Y%m%d-%H%M%S)"
+cp /etc/hosts "$BACKUP"
+echo "Backed up /etc/hosts to: $BACKUP"
+
+# Clean out any existing api.cursor.sh entries
+if grep -qE '(^|[[:space:]])api\.cursor\.sh([[:space:]]|$)' /etc/hosts; then
+  echo "Removing existing api.cursor.sh entries from /etc/hosts..."
+  sed -i '' '/api\.cursor\.sh/d' /etc/hosts
+fi
+
+echo
+echo "Resolving api.cursor.com IPv4 addresses..."
+# Try to get up to two A records. If DNS for cursor.com fails, we bail cleanly.
+IPS=$(dig +short A api.cursor.com | head -n 2 | awk NF || true)
+
+if [[ -z "$IPS" ]]; then
+  echo "Could not resolve api.cursor.com to IPv4. Aborting without changes."
+  echo "Tip: check your resolver or try again later."
+  exit 1
+fi
+
+echo "Will pin api.cursor.sh to:"
+echo "$IPS" | sed 's/^/  - /'
+
+# Append entries
+echo
+echo "Updating /etc/hosts..."
+{
+  echo "# Cursor temporary pin $(date +%Y-%m-%dT%H:%M:%S)"
+  while read -r ip; do
+    echo "$ip api.cursor.sh"
+  done <<< "$IPS"
+} >> /etc/hosts
+
+# Flush DNS caches on macOS
+echo
+echo "Flushing DNS caches..."
+dscacheutil -flushcache || true
+killall -HUP mDNSResponder || true
+
+# Test resolution
+echo
+echo "Testing DNS resolution..."
+if dig +short api.cursor.sh | grep -qE '^[0-9]+\.'; then
+  RESOLVED=$(dig +short api.cursor.sh | paste -sd "," -)
+  echo "✓ api.cursor.sh resolves to: $RESOLVED"
+else
+  echo "✗ api.cursor.sh does not resolve. Rolling back..."
+  cp "$BACKUP" /etc/hosts
+  dscacheutil -flushcache || true
+  killall -HUP mDNSResponder || true
+  exit 1
+fi
+
+# Test HTTPS connectivity quickly
+echo
+echo "Testing HTTPS connectivity..."
+if curl -sS --connect-timeout 5 --max-time 10 https://api.cursor.sh >/dev/null; then
+  echo "✓ Successfully connected to https://api.cursor.sh"
+else
+  echo "⚠ Name resolves but HTTPS check failed. This can happen if the pinned IP is unhealthy."
+  echo "You can roll back with: sudo cp \"$BACKUP\" /etc/hosts && sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder"
+fi
+
+echo
+echo "Done."
+echo "Note: this is a temporary workaround. Remove these lines later when DNS is fixed."
