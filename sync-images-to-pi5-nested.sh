@@ -128,6 +128,9 @@ for folder_path in "${portfolio_folders[@]}"; do
     
     echo "📁 Processing: '$relative_path' → '$pi5_folder'"
     
+    # Track whether folder was newly created on Pi5
+    folder_was_created=false
+
     # Check if folder exists on Pi5, create if it doesn't
     if ! ssh -i "$SSH_KEY" "$PI_USER@$PI_HOST" "[ -d '$PI_PATH/$pi5_folder' ]"; then
         if [ "$DRY_RUN" = true ]; then
@@ -135,6 +138,7 @@ for folder_path in "${portfolio_folders[@]}"; do
         else
             echo "   ➕ Creating missing folder: $pi5_folder"
             ssh -i "$SSH_KEY" "$PI_USER@$PI_HOST" "mkdir -p '$PI_PATH/$pi5_folder'"
+            folder_was_created=true
         fi
     else
         echo "   ✅ Folder exists: $pi5_folder"
@@ -183,15 +187,29 @@ for folder_path in "${portfolio_folders[@]}"; do
         sync_success=true
     else
         echo "   📤 Syncing folder: $relative_path"
-        if rsync -avz --progress --update \
+        # Capture rsync output to detect actual changes (files created/updated)
+        rsync_output=$(rsync -avz --progress --update --itemize-changes \
             --exclude '._*' \
             --exclude '.DS_Store' \
             --exclude 'Thumbs.db' \
             -e "ssh -i $SSH_KEY" \
-            "$folder_path/" "$PI_USER@$PI_HOST:$PI_PATH/$pi5_folder/"; then
+            "$folder_path/" "$PI_USER@$PI_HOST:$PI_PATH/$pi5_folder/" 2>&1)
+
+        if [ $? -eq 0 ]; then
+            # Re-emit rsync output for visibility
+            echo "$rsync_output"
             echo "   ✅ Successfully synced: $relative_path"
-            # Track this folder for optimization
-            synced_folders+=("$pi5_folder")
+
+            # Detect if any changes occurred (files transferred/created) OR folder was created
+            if echo "$rsync_output" | grep -qE '^(>f|>d|c)'; then
+                echo "   🔎 Changes detected in: $pi5_folder → will optimize"
+                synced_folders+=("$pi5_folder")
+            elif [ "$folder_was_created" = true ]; then
+                echo "   🆕 Folder was newly created: $pi5_folder → will optimize"
+                synced_folders+=("$pi5_folder")
+            else
+                echo "   ⏭️  No changes detected in: $pi5_folder → skipping optimization for this folder"
+            fi
             
             # Ensure Cover.jpg exists in the folder
             echo "   🖼️  Ensuring Cover.jpg exists..."
